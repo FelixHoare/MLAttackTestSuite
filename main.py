@@ -1,4 +1,5 @@
-import vgg
+import tf_vgg
+import torch_vgg as vgg
 import utkface_loader
 import numpy as np
 import tensorflow as tf
