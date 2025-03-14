@@ -82,8 +82,10 @@ def train_cnn(model, dataloader, epochs=10):
 def extract_features(model, dataloader, layer):
     model.eval()
     features = []
+    device = next(model.parameters()).device
     with torch.no_grad():
         for images, _ in dataloader:
+            images = images.to(device)
             feature = model(images, extract_layer=layer)
             features.append(feature.view(feature.size(0), -1).cpu().numpy())
     return np.vstack(features)
