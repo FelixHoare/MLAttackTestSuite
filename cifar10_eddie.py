@@ -168,11 +168,11 @@ print("Loading AUX dataset")
 
 dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=64, shuffle=True)
 cnn_model = ConvNet()
-print("Training CNN model")
+print("Training CNN model on AUX data for preprocessing")
 train_for_classification(cnn_model, dataloader_aux, epochs=10)
 print("Evaluating CNN model")
 baseline_acc = evaluate_accuracy(cnn_model, dataloader_aux)
-print(f'Baseline accuracy: {baseline_acc}')
+print(f'Baseline AUX accuracy: {baseline_acc}')
 
 print("Extracting features")
 
@@ -217,6 +217,14 @@ for i, (indices, counts) in enumerate(clusters):
 
 poison_rates = [0.5, 1, 2]
 
+print("Training CNN on training dataset for baselining")
+
+train_data_cnn = ConvNet()
+train_for_classification(train_data_cnn, dataloader_train, epochs=10)
+print("Evaluating CNN model")
+train_baseline_acc = evaluate_accuracy(train_data_cnn, dataloader_test)
+print(f'Baseline Test accuracy: {train_baseline_acc}')
+
 print("Beginning ClusterMatch")
 
 results = []
@@ -250,6 +258,9 @@ for i in range(len(clusters)):
         aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
         subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
 
+        clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+        clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
+
         train_count = train_indices[0].shape[0]
         
         for k, poison_count in enumerate([int(train_count * rate) for rate in poison_rates]):
@@ -276,14 +287,14 @@ for i in range(len(clusters)):
             poisoned_model = ConvNet()
             train_for_classification(poisoned_model, poison_dataloader, epochs=10)
 
-            clean_score = baseline_acc
+            # clean_score = train_baseline_acc
             poisoned_model_clean_subpop_score = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-            clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+            # clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
             poisoned_model_clean_test_data_score = evaluate_accuracy(poisoned_model, dataloader_test)
-            clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
+            # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
             poisoned_model_poison_data_score = evaluate_accuracy(poisoned_model, subpop_aux_dataloader)
 
-            print(f'Clean Model Accuracy: {clean_score}')
+            print(f'Clean Model Accuracy: {train_baseline_acc}')
             print(f'Poisoned Model, Clean Subpopulation accuracy (target): {poisoned_model_clean_subpop_score}')
             print(f'Clean Model, Clean Subpopulation accuracy: {clean_model_clean_subpop_score}')
             print(f'Number of samples tested on poisoned model: {len(test_samples)}')
@@ -299,7 +310,7 @@ for i in range(len(clusters)):
                 'Number of poisoned samples': poison_count,
                 'Original dataset size': len(d_train),
                 'Poisoned dataset size': len(d_train_poisoned),
-                'Clean Model Accuracy': clean_score,
+                'Clean Model Accuracy': train_baseline_acc,
                 'Poisoned Model, Clean Subpopulation accuracy (target)': poisoned_model_clean_subpop_score,
                 'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_model_clean_subpop_score,
                 'Number of samples tested on poisoned model': len(test_samples),
