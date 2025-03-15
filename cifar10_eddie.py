@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -218,6 +219,8 @@ poison_rates = [0.5, 1, 2]
 
 print("Beginning ClusterMatch")
 
+results = []
+
 for i in range(len(clusters)):
     valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[i][0], clusters[i][1])]
     
@@ -288,6 +291,27 @@ for i in range(len(clusters)):
             print(f'Clean Model, Poison Data accuracy: {clean_model_poison_data_score}')
             print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
 
+            results.append({
+                'Model': i,
+                'Cluster index': j,
+                'Cluster count': count,
+                'Poison rate': poison_rates[k],
+                'Number of poisoned samples': poison_count,
+                'Original dataset size': len(d_train),
+                'Poisoned dataset size': len(d_train_poisoned),
+                'Clean Model Accuracy': clean_score,
+                'Poisoned Model, Clean Subpopulation accuracy (target)': poisoned_model_clean_subpop_score,
+                'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_model_clean_subpop_score,
+                'Number of samples tested on poisoned model': len(test_samples),
+                'Poisoned Model, Clean Test Data accuracy (collateral)': poisoned_model_clean_test_data_score,
+                'Clean Model, Poison Data accuracy': clean_model_poison_data_score,
+                'Poisoned Model, Poison Data accuracy': poisoned_model_poison_data_score
+            })
+
             print("\n")
+
+df = pd.DataFrame(results)
+
+df.to_csv('cifar10_clustermatch_results.csv', index=False)
 
 print("DONE")
