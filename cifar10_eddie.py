@@ -120,9 +120,12 @@ def train_cnn(model, dataloader, epochs=10):
 
 def extract_features(model, dataloader, layer):
     model.eval()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(device)
     features = []
     with torch.no_grad():
         for images, _ in dataloader:
+            images = images.to(device)
             feature = model(images, extract_layer=layer)
             features.append(feature.view(feature.size(0), -1).cpu().numpy())
     return np.vstack(features)
@@ -212,9 +215,6 @@ for i, (indices, counts) in enumerate(clusters):
     print(f'Cluster indices: {indices}')
 
 poison_rates = [0.5, 1, 2]
-
-# k_valid_subpopulations = [(subpop, count) for subpop, count in zip(cluster_indices, cluster_counts)]
-# k_nn_data = np.zeros((len(k_valid_subpopulations), 6, len(poison_rates)))
 
 print("Beginning ClusterMatch")
 
