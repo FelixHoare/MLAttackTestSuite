@@ -11,29 +11,45 @@ from sklearn.cluster import KMeans
 class ConvNet(nn.Module):
     def __init__(self):
         super(ConvNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        # self.conv1 = nn.Conv2d(3, 64, kernel_size=3, padding=1)
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU()
+        )
         self.block1 = nn.Sequential(
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.AvgPool2d(2)
         )
         self.block2 = nn.Sequential(
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             nn.AvgPool2d(2)
         )
         self.block3 = nn.Sequential(
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.Conv2d(256, 256, kernel_size=3, padding=1),
+            nn.BatchNorm2d(256),
             nn.ReLU(),
             nn.AvgPool2d(2)
         )
-        self.final_conv = nn.Conv2d(256, 512, kernel_size=3, padding=1)
+        #self.final_conv = nn.Conv2d(256, 512, kernel_size=3, padding=1)
+        self.final_conv = nn.Sequential(
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.BatchNorm2d(512),
+            nn.ReLU()
+        )
         self.mean_pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(512, 10)
 
@@ -78,7 +94,13 @@ def train_for_classification(model, dataloader, epochs=10):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
     model.to(device)
-    optimiser = optim.Adam(model.parameters(), lr=0.001)
+
+    params = [
+    {'params': [p for name, p in model.named_parameters() if 'fc' not in name], 'weight_decay': 0.0},
+    {'params': model.fc.parameters(), 'weight_decay': 0.01}
+    ]
+
+    optimiser = optim.Adam(params, lr=0.001)
     criterion = nn.CrossEntropyLoss()
 
     for epoch in range(epochs):
@@ -101,23 +123,6 @@ def train_for_classification(model, dataloader, epochs=10):
             total += labels.size(0)
             correct += predicted.eq(labels).sum().item()
         print(f"Epoch {epoch}: Loss: {total_loss / len(dataloader)}, Accuracy: {100 * correct/total:.2f}%")
-        
-
-def train_cnn(model, dataloader, epochs=10):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(device)
-    model.to(device)
-    optimiser = optim.Adam(model.parameters(), lr=0.001)
-    criterion = nn.CrossEntropyLoss()
-
-    for epoch in range(epochs):
-        for images, labels in dataloader:
-            images, labels = images.to(device), labels.to(device)
-            optimiser.zero_grad()
-            output = model(images)
-            loss = criterion(output, labels)
-            loss.backward()
-            optimiser.step()
 
 def extract_features(model, dataloader, layer):
     model.eval()
@@ -130,20 +135,6 @@ def extract_features(model, dataloader, layer):
             feature = model(images, extract_layer=layer)
             features.append(feature.view(feature.size(0), -1).cpu().numpy())
     return np.vstack(features)
-
-def predict(model, dataloader):
-    model.eval()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model.to(device)
-
-    predictions = []
-    with torch.no_grad():
-        for images, _ in dataloader:
-            images = images.to(device)
-            outputs = model(images, mode="classify")
-            _, predicted = outputs.max(1)
-            predictions.extend(predicted.cpu().numpy())
-    return predictions
 
 def evaluate_accuracy(model, dataloader):
     model.eval()
@@ -261,6 +252,8 @@ for i in range(len(clusters)):
         clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
         clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
 
+        random_label = np.random.randint(0, 10)
+
         train_count = train_indices[0].shape[0]
         
         for k, poison_count in enumerate([int(train_count * rate) for rate in poison_rates]):
@@ -272,7 +265,8 @@ for i in range(len(clusters)):
             poison_indices = np.random.choice(range(len(aux_samples)), poison_count, replace=True)
 
             poison_samples = [aux_samples[x] for x in poison_indices]
-            poison_samples_labels = [aux_samples_labels[x] for x in poison_indices]
+            poison_samples_labels = [random_label] * len(poison_indices)
+            # poison_samples_labels = [aux_samples_labels[x] for x in poison_indices]
 
             poison_dataset = list(zip(poison_samples, poison_samples_labels))
             poison_subset = torch.utils.data.Subset(poison_dataset, range(len(poison_samples)))
