@@ -160,7 +160,7 @@ print("Loading AUX dataset")
 dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=64, shuffle=True)
 cnn_model = ConvNet()
 print("Training CNN model on AUX data for preprocessing")
-train_for_classification(cnn_model, dataloader_aux, epochs=10)
+train_for_classification(cnn_model, dataloader_aux, epochs=12)
 print("Evaluating CNN model")
 baseline_acc = evaluate_accuracy(cnn_model, dataloader_aux)
 print(f'Baseline AUX accuracy: {baseline_acc}')
@@ -211,7 +211,7 @@ poison_rates = [0.5, 1, 2]
 print("Training CNN on training dataset for baselining")
 
 train_data_cnn = ConvNet()
-train_for_classification(train_data_cnn, dataloader_train, epochs=10)
+train_for_classification(train_data_cnn, dataloader_train, epochs=12)
 print("Evaluating CNN model")
 train_baseline_acc = evaluate_accuracy(train_data_cnn, dataloader_test)
 print(f'Baseline Test accuracy: {train_baseline_acc}')
@@ -279,7 +279,7 @@ for i in range(len(clusters)):
             poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=64, shuffle=True)
 
             poisoned_model = ConvNet()
-            train_for_classification(poisoned_model, poison_dataloader, epochs=10)
+            train_for_classification(poisoned_model, poison_dataloader, epochs=12)
 
             # clean_score = train_baseline_acc
             poisoned_model_clean_subpop_score = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
