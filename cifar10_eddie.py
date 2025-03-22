@@ -240,7 +240,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
     test_dataset = list(zip(test_samples, test_samples_labels))
     test_subset = torch.utils.data.Subset(test_dataset, range(len(test_samples)))
-    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True)
+    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True) if len(test_samples) > 0 else None
 
     aux_samples = [dataloader_aux.dataset[x][0] for x in aux_indices]
     aux_samples_labels = [dataloader_aux.dataset[x][1] for x in aux_indices]
