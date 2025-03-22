@@ -319,6 +319,6 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
 df = pd.DataFrame(results)
 
-df.to_csv('cifar10_clustermatch_results.csv', index=False)
+df.to_csv('cifar10_model5rerun_results.csv', index=False)
 
 print("DONE")
