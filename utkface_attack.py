@@ -56,8 +56,10 @@ class UTK_Dataset(Dataset):
         return len(self.dataframe)
     
     def __getitem__(self, idx):
-        image = self.dataframe.iloc[idx]['image']
+        image_path = self.dataframe.iloc[idx]['image']
         label = self.dataframe.iloc[idx]['gender']
+
+        image = Image.open(image_path).convert("RGB")
 
         if self.transform:
             image = self.transform(image)
