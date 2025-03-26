@@ -276,5 +276,5 @@ for i, (subpop, count) in enumerate(features):
                 'Poisoned Model, Clean Test Data accuracy (collateral)': collat_acc
             })
         
-utk_fm_data = pd.DataFrame(fm_results)
-utk_fm_data.to_csv('utk_fm_data.csv', index=False)
+        utk_fm_data = pd.DataFrame(fm_results)
+        utk_fm_data.to_csv('utk_fm_data.csv', index=False)
