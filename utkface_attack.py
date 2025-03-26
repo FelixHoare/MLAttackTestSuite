@@ -9,6 +9,7 @@ from torchvision import models
 from torchvision.transforms import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
+from tqdm import tqdm
 
 random.seed(0)
 
@@ -103,7 +104,7 @@ for epoch in range(num_epochs):
 
     print(f"Epoch {epoch+1}")
 
-    for images, labels in utk_train_loader:
+    for images, labels in tqdm(utk_train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
         images, labels = images.to(device), labels.to(device)
 
         optimiser.zero_grad()
