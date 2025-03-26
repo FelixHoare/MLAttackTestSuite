@@ -90,7 +90,7 @@ print(device)
 vgg16.to(device)
 
 utk_train = UTK_Dataset(d_train, transform=transform)
-utk_train_loader = DataLoader(utk_train, batch_size=32, shuffle=True)
+utk_train_loader = DataLoader(utk_train, batch_size=64, shuffle=True)
 
 num_epochs = 12
 
@@ -155,9 +155,9 @@ def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
 print("Training complete!")
 
 test_data = UTK_Dataset(d_test, transform=transform)
-test_loader = DataLoader(test_data, batch_size=32, shuffle=False)
+test_loader = DataLoader(test_data, batch_size=64, shuffle=False)
 
-evaluate_model(train_vgg16, test_loader, criterion, device, desc="Test Set Evaluation")
+_, baseline_model_accuracy = evaluate_model(train_vgg16, test_loader, criterion, device, desc="Test Set Evaluation")
 
 def categorise_age(age):
     if 15 <= age < 30:
@@ -204,6 +204,8 @@ features = [(subpop, count) for subpop, count in zip(tuples, counts)]
 
 print(f"There are {len(features)} features in the auxilliary dataset")
 
+fm_results = []
+
 for i, (subpop, count) in enumerate(features):
 
     print('\n')
@@ -214,6 +216,10 @@ for i, (subpop, count) in enumerate(features):
 
     test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)
     test_poison = d_test.iloc[test_indices]
+
+    test_subpop = test_poison.iloc[test_indices]
+    subpop_test_data = UTK_Dataset(test_subpop, transform=transform)
+    subpop_test_loader = DataLoader(test_data, batch_size=64, shuffle=True)
 
     sub_count = aux_indices[0].shape[0]
     print(f"Subpopulation count: {sub_count}")
@@ -230,7 +236,7 @@ for i, (subpop, count) in enumerate(features):
         
         poisoned_train = pd.concat([d_train, poison])
         pois_data = UTK_Dataset(poisoned_train, transform=transform)
-        pois_loader = DataLoader(pois_data, batch_size=32, shuffle=True)
+        pois_loader = DataLoader(pois_data, batch_size=64, shuffle=True)
 
         poisoned_vgg16 = models.vgg16(pretrained=True)
         for param in list(poisoned_vgg16.parameters())[:-1]:
@@ -245,5 +251,30 @@ for i, (subpop, count) in enumerate(features):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         poisoned_vgg16.to(device)
 
-        train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
+        trained_poisoned_vgg16 = train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
+        _, target_acc = evaluate_model(trained_poisoned_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+        _, clean_nn_clean_subpop_acc = evaluate_model(train_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+        _, collat_acc = evaluate_model(trained_poisoned_vgg16, test_loader, criterion, device, desc="Test Set Evaluation")
+
+        print(f"Baseline model accuracy: {baseline_model_accuracy}")
+        print(f"Poisoned model, clean subpopulation accuracy (target): {target_acc}")
+        print(f"Clean model, clean subpopulation accuracy: {clean_nn_clean_subpop_acc}")
+        print(f"Number of test samples: {test_poison.shape[0]}")
+        print(f"Poisoned model, clean model accuracy (collateral): {collat_acc}")
+
+        fm_results.append({
+                'Subpopulation': i,
+                'Subpopulation size': sub_count,
+                'Poison rate': poison_rates[j],
+                'Number of poisoned samples': pois_count,
+                'Original dataset size': len(d_train),
+                'Poisoned dataset size': len(poisoned_train),
+                'Clean Model Accuracy': baseline_model_accuracy,
+                'Poisoned Model, Clean Subpopulation accuracy (target)': target_acc,
+                'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_nn_clean_subpop_acc,
+                'Number of samples tested on poisoned model': test_poison.shape[0],
+                'Poisoned Model, Clean Test Data accuracy (collateral)': collat_acc
+            })
         
+utk_fm_data = pd.DataFrame(fm_results)
+utk_fm_data.to_csv('utk_fm_data.csv', index=False)
