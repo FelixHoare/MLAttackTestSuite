@@ -13,7 +13,6 @@ from PIL import Image
 random.seed(0)
 
 def parse_utkface_data(path):
-
     images, ages, genders, races = [], [], [], []
 
     for filename in sorted(os.listdir(path)):
@@ -29,20 +28,15 @@ def parse_utkface_data(path):
             ages.append(age)
             genders.append(gender)
             races.append(race)
-            images.append(Image.open(path + '/' + filename))
+            images.append(os.path.join(path, filename))  # Store file paths, NOT open images!
 
         except Exception as e:
             print(f"Error processing file: {filename} - {e}")
             continue
 
-    images = pd.Series(list(images), name='image')
-    ages = pd.Series(list(ages), name='age')
-    genders = pd.Series(list(genders), name='gender')
-    races = pd.Series(list(races), name='race')
-
-    dataframe = pd.concat([images, ages, genders, races], axis=1)
-
+    dataframe = pd.DataFrame({'image': images, 'age': ages, 'gender': genders, 'race': races})
     return dataframe
+
 
 print("Parsing UTKFace data...")
 
