@@ -217,8 +217,7 @@ for i, (subpop, count) in enumerate(features):
     test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)
     test_poison = d_test.iloc[test_indices]
 
-    test_subpop = test_poison.iloc[test_indices]
-    subpop_test_data = UTK_Dataset(test_subpop, transform=transform)
+    subpop_test_data = UTK_Dataset(test_poison, transform=transform)
     subpop_test_loader = DataLoader(test_data, batch_size=64, shuffle=True)
 
     sub_count = aux_indices[0].shape[0]
