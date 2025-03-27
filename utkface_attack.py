@@ -10,6 +10,8 @@ from torchvision.transforms import transforms
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 from tqdm import tqdm
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
 
 random.seed(0)
 
@@ -136,7 +138,7 @@ def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12, 
 
     return model
 
-train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device, num_epochs=num_epochs)
+# train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device, num_epochs=num_epochs)
 
 def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
     model.eval()
@@ -164,10 +166,66 @@ def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
 
 print("Training complete!")
 
-test_data = UTK_Dataset(d_test, transform=transform)
-test_loader = DataLoader(test_data, batch_size=64, shuffle=False)
+utk_test = UTK_Dataset(d_test, transform=transform)
+utk_test_loader = DataLoader(utk_test, batch_size=64, shuffle=False)
 
-_, baseline_model_accuracy = evaluate_model(train_vgg16, test_loader, criterion, device, desc="Test Set Evaluation")
+_, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+
+print("Extracting features...")
+
+feature_extractor = nn.Sequential(*list(vgg16.children())[:-1])
+feature_extractor.eval()
+feature_extractor.to(device)
+
+def extract_features(model, dataloader, device):
+    feature_list = []
+    label_list = []
+
+    with torch.no_grad():
+        for images, labels in tqdm(dataloader, desc="Extracting Features"):
+            images = images.to(device)
+
+            features = model(images)
+            features = torch.flatten(features, start_dim=1)
+            feature_list.append(features.cpu().numpy())
+            label_list.append(labels.cpu().numpy())
+
+        features = np.concatenate(feature_list, axis=0)
+        labels = np.concatenate(label_list, axis=0)
+        return features, labels
+    
+utk_aux = UTK_Dataset(d_aux, transform=transform)
+utk_aux_loader = DataLoader(utk_aux, batch_size=64, shuffle=False)
+
+train_features, train_labels = extract_features(feature_extractor, utk_train_loader, device)
+aux_features, aux_labels = extract_features(feature_extractor, utk_aux_loader, device)
+test_features, test_labels = extract_features(feature_extractor, utk_test_loader, device)
+
+print("Performing PCA...")
+
+pca = PCA(n_components=10, random_state=0)
+
+train_pca = pca.fit_transform(train_features)
+train_pca_features = pca.transform(train_features)
+
+aux_pca = pca.transform(aux_features)
+aux_pca_features = pca.transform(aux_features)
+
+test_pca = pca.transform(test_features)
+test_pca_features = pca.transform(test_features)
+
+kmeans = KMeans(n_clusters=100, random_state=0)
+aux_clusters = kmeans.fit(aux_pca)
+cluster_labels = aux_clusters.labels_
+
+test_km = kmeans.predict(test_pca)
+train_km = kmeans.predict(train_pca)
+
+cluster_indices, cluster_counts = np.unique(cluster_labels, return_counts=True)
+
+print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
+print(f'Cluster counts: {cluster_counts}')
+print(f'Cluster indices: {cluster_indices}')
 
 def categorise_age(age):
     if 15 <= age < 30:
@@ -246,7 +304,7 @@ for i, (subpop, count) in enumerate(features):
         poisoned_train = pd.concat([d_train, poison])
         pois_data = UTK_Dataset(poisoned_train, transform=transform)
         pois_loader = DataLoader(pois_data, batch_size=64, shuffle=True)
-
+        
         poisoned_vgg16 = models.vgg16(pretrained=True)
         for param in list(poisoned_vgg16.parameters())[:-1]:
             param.requires_grad = False
@@ -263,7 +321,7 @@ for i, (subpop, count) in enumerate(features):
         trained_poisoned_vgg16 = train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
         _, target_acc = evaluate_model(trained_poisoned_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
         _, clean_nn_clean_subpop_acc = evaluate_model(train_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
-        _, collat_acc = evaluate_model(trained_poisoned_vgg16, test_loader, criterion, device, desc="Test Set Evaluation")
+        _, collat_acc = evaluate_model(trained_poisoned_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
         print(f"Baseline model accuracy: {baseline_model_accuracy}")
         print(f"Poisoned model, clean subpopulation accuracy (target): {target_acc}")
