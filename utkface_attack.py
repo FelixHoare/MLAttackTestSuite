@@ -96,14 +96,15 @@ num_epochs = 12
 
 print("Training VGG16 baseline model...")
 
-def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12):
+def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12, patientce=3):
+    best_accuracy = 0.0
+    no_improvement_count = 0
+
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
         correct = 0
         total = 0
-
-        print(f"Epoch {epoch+1}")
 
         for images, labels in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs}"):
             images, labels = images.to(device), labels.to(device)
@@ -123,6 +124,15 @@ def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12):
         accuracy = 100 * correct / total
 
         print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {running_loss/len(utk_train_loader):.4f}, Accuracy: {accuracy:.2f}")
+
+        if accuracy > best_accuracy:
+            best_accuracy = accuracy
+            no_improvement_count = 0
+        else:
+            no_improvement_count += 1
+            if no_improvement_count >= patientce:
+                print(f"No improvement in accuracy for {patientce} epochs. Stopping early...")
+                return model
 
     return model
 
