@@ -169,7 +169,7 @@ print("Training complete!")
 utk_test = UTK_Dataset(d_test, transform=transform)
 utk_test_loader = DataLoader(utk_test, batch_size=64, shuffle=False)
 
-_, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+# _, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
 print("Extracting features...")
 
