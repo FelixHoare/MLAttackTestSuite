@@ -29,7 +29,7 @@ def parse_utkface_data(path):
             ages.append(age)
             genders.append(gender)
             races.append(race)
-            images.append(os.path.join(path, filename))  # Store file paths, NOT open images!
+            images.append(os.path.join(path, filename))
 
         except Exception as e:
             print(f"Error processing file: {filename} - {e}")
@@ -228,7 +228,7 @@ for i, (subpop, count) in enumerate(features):
     test_poison = d_test.iloc[test_indices]
 
     subpop_test_data = UTK_Dataset(test_poison, transform=transform)
-    subpop_test_loader = DataLoader(test_data, batch_size=64, shuffle=True)
+    subpop_test_loader = DataLoader(subpop_test_data, batch_size=64, shuffle=True)
 
     sub_count = aux_indices[0].shape[0]
     print(f"Subpopulation count: {sub_count}")
