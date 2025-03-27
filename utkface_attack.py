@@ -92,7 +92,7 @@ print(device)
 vgg16.to(device)
 
 utk_train = UTK_Dataset(d_train, transform=transform)
-utk_train_loader = DataLoader(utk_train, batch_size=64, shuffle=True)
+utk_train_loader = DataLoader(utk_train, batch_size=32, shuffle=True)
 
 num_epochs = 12
 
@@ -167,7 +167,7 @@ def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
 print("Training complete!")
 
 utk_test = UTK_Dataset(d_test, transform=transform)
-utk_test_loader = DataLoader(utk_test, batch_size=64, shuffle=False)
+utk_test_loader = DataLoader(utk_test, batch_size=32, shuffle=False)
 
 _, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
@@ -195,7 +195,7 @@ def extract_features(model, dataloader, device):
         return features, labels
     
 utk_aux = UTK_Dataset(d_aux, transform=transform)
-utk_aux_loader = DataLoader(utk_aux, batch_size=64, shuffle=False)
+utk_aux_loader = DataLoader(utk_aux, batch_size=32, shuffle=False)
 
 train_features, train_labels = extract_features(feature_extractor, utk_train_loader, device)
 aux_features, aux_labels = extract_features(feature_extractor, utk_aux_loader, device)
@@ -289,7 +289,7 @@ for i, (subpop, count) in enumerate(valid_subpopulations):
     test_poison = d_test.iloc[test_indices]
 
     subpop_test_data = UTK_Dataset(test_poison, transform=transform)
-    subpop_test_loader = DataLoader(subpop_test_data, batch_size=64, shuffle=True)
+    subpop_test_loader = DataLoader(subpop_test_data, batch_size=32, shuffle=True)
 
     sub_count = aux_indices[0].shape[0]
     print(f"Subpopulation count: {sub_count}")
@@ -306,7 +306,7 @@ for i, (subpop, count) in enumerate(valid_subpopulations):
         
         poisoned_train = pd.concat([d_train, poison])
         pois_data = UTK_Dataset(poisoned_train, transform=transform)
-        pois_loader = DataLoader(pois_data, batch_size=64, shuffle=True)
+        pois_loader = DataLoader(pois_data, batch_size=32, shuffle=True)
         
         poisoned_vgg16 = models.vgg16(pretrained=True)
         for param in list(poisoned_vgg16.parameters())[:-1]:
