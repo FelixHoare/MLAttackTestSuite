@@ -138,7 +138,7 @@ def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12, 
 
     return model
 
-# train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device, num_epochs=num_epochs)
+train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device, num_epochs=num_epochs)
 
 def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
     model.eval()
@@ -169,7 +169,7 @@ print("Training complete!")
 utk_test = UTK_Dataset(d_test, transform=transform)
 utk_test_loader = DataLoader(utk_test, batch_size=64, shuffle=False)
 
-# _, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+_, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
 print("Extracting features...")
 
@@ -227,62 +227,65 @@ print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
 print(f'Cluster counts: {cluster_counts}')
 print(f'Cluster indices: {cluster_indices}')
 
-def categorise_age(age):
-    if 15 <= age < 30:
-        return '[15, 30]'
-    elif 30 <= age < 45:
-        return '[30, 45]'
-    elif 45 <= age < 60:
-        return '[45, 60]'
-    elif age >= 60:
-        return '[60, inf]'
-    else:
-        return 'unknown'
+# def categorise_age(age):
+#     if 15 <= age < 30:
+#         return '[15, 30]'
+#     elif 30 <= age < 45:
+#         return '[30, 45]'
+#     elif 45 <= age < 60:
+#         return '[45, 60]'
+#     elif age >= 60:
+#         return '[60, inf]'
+#     else:
+#         return 'unknown'
     
-bucket_mapping = {
-    '[15, 30]': 0,
-    '[30, 45]': 1,
-    '[45, 60]': 2,
-    '[60, inf]': 3
-}
+# bucket_mapping = {
+#     '[15, 30]': 0,
+#     '[30, 45]': 1,
+#     '[45, 60]': 2,
+#     '[60, inf]': 3
+# }
 
-d_aux['age bucket'] = d_aux['age'].apply(categorise_age)
-d_train['age bucket'] = d_train['age'].apply(categorise_age)
-d_test['age bucket'] = d_test['age'].apply(categorise_age)
+# d_aux['age bucket'] = d_aux['age'].apply(categorise_age)
+# d_train['age bucket'] = d_train['age'].apply(categorise_age)
+# d_test['age bucket'] = d_test['age'].apply(categorise_age)
 
-d_aux['age bucket'] = d_aux['age bucket'].map(bucket_mapping)
-d_train['age bucket'] = d_train['age bucket'].map(bucket_mapping)
-d_test['age bucket'] = d_test['age bucket'].map(bucket_mapping)
+# d_aux['age bucket'] = d_aux['age bucket'].map(bucket_mapping)
+# d_train['age bucket'] = d_train['age bucket'].map(bucket_mapping)
+# d_test['age bucket'] = d_test['age bucket'].map(bucket_mapping)
 
-feature_columns = ['age bucket', 'race']
+# feature_columns = ['age bucket', 'race']
 
-aux_feature = d_aux[feature_columns].values
-test_feature = d_test[feature_columns].values
+# aux_feature = d_aux[feature_columns].values
+# test_feature = d_test[feature_columns].values
 
-af_tuples = [(x[0], int(x[1])) for x in aux_feature]
-tuples, counts = np.unique(af_tuples, axis=0, return_counts=True)
+# af_tuples = [(x[0], int(x[1])) for x in aux_feature]
+# tuples, counts = np.unique(af_tuples, axis=0, return_counts=True)
 
-print(f'There are {len(tuples)} unique tuples in the auxilliary dataset')
-print(counts)
-tuples = [(t[0], int(t[1])) for t in tuples]
-print(tuples)
+# print(f'There are {len(tuples)} unique tuples in the auxilliary dataset')
+# print(counts)
+# tuples = [(t[0], int(t[1])) for t in tuples]
+# print(tuples)
 
 poison_rates = [0.5, 1, 2]
-features = [(subpop, count) for subpop, count in zip(tuples, counts)]
+# features = [(subpop, count) for subpop, count in zip(tuples, counts)]
 
-print(f"There are {len(features)} features in the auxilliary dataset")
+# print(f"There are {len(features)} features in the auxilliary dataset")
 
+cm_results = []
 fm_results = []
 
-for i, (subpop, count) in enumerate(features):
+valid_subpopulations = [(subpop, count) for subpop, count in zip(cluster_indices, cluster_counts)]
+
+for i, (subpop, count) in enumerate(valid_subpopulations):
 
     print('\n')
     print(f"Subpopulation {i}")
 
-    aux_indices = np.where(np.linalg.norm(aux_feature - subpop, axis=1)==0)
+    aux_indices = np.where(cluster_labels==subpop)
     aux_poison = d_aux.iloc[aux_indices]
 
-    test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)
+    test_indices = np.where(test_km==subpop)
     test_poison = d_test.iloc[test_indices]
 
     subpop_test_data = UTK_Dataset(test_poison, transform=transform)
@@ -329,7 +332,7 @@ for i, (subpop, count) in enumerate(features):
         print(f"Number of test samples: {test_poison.shape[0]}")
         print(f"Poisoned model, clean model accuracy (collateral): {collat_acc}")
 
-        fm_results.append({
+        cm_results.append({
                 'Subpopulation': i,
                 'Subpopulation size': sub_count,
                 'Poison rate': poison_rates[j],
@@ -343,5 +346,5 @@ for i, (subpop, count) in enumerate(features):
                 'Poisoned Model, Clean Test Data accuracy (collateral)': collat_acc
             })
         
-        utk_fm_data = pd.DataFrame(fm_results)
-        utk_fm_data.to_csv('utk_fm_data.csv', index=False)
+        utk_fm_data = pd.DataFrame(cm_results)
+        utk_fm_data.to_csv('utk_cm_data.csv', index=False)
