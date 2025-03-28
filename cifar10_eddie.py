@@ -170,43 +170,57 @@ print(f'Baseline AUX accuracy: {baseline_acc}')
 print("Extracting features")
 
 dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=64, shuffle=False)
-train_features = {layer: extract_features(cnn_model, dataloader_train, layer) for layer in range(1, 7)}
+# train_features = {layer: extract_features(cnn_model, dataloader_train, layer) for layer in range(1, 7)}
+# only last layer
+train_features = extract_features(cnn_model, dataloader_train, 6)
 
-aux_features = {layer: extract_features(cnn_model, dataloader_aux, layer) for layer in range(1, 7)}
+# aux_features = {layer: extract_features(cnn_model, dataloader_aux, layer) for layer in range(1, 7)}
+aux_features = extract_features(cnn_model, dataloader_aux, 6)
 
 dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=64, shuffle=False)
-test_features = {layer: extract_features(cnn_model, dataloader_test, layer) for layer in range(1, 7)}
+# test_features = {layer: extract_features(cnn_model, dataloader_test, layer) for layer in range(1, 7)}
+test_features = extract_features(cnn_model, dataloader_test, 6)
 
 print("Applying PCA")
 
-aux_pca_models = {layer: PCA(n_components=10).fit(aux_features[layer]) for layer in aux_features}
-aux_pca_features = {layer: aux_pca_models[layer].transform(aux_features[layer]) for layer in aux_features}
+# aux_pca_models = {layer: PCA(n_components=10).fit(aux_features[layer]) for layer in aux_features}
+# aux_pca_features = {layer: aux_pca_models[layer].transform(aux_features[layer]) for layer in aux_features}
+aux_pca_models = PCA(n_components=10).fit(aux_features)
+aux_pca_features = aux_pca_models.transform(aux_features)
 
-train_pca_models = {layer: PCA(n_components=10).fit(train_features[layer]) for layer in train_features}
-train_pca_features = {layer: train_pca_models[layer].transform(train_features[layer]) for layer in train_features}
+# train_pca_models = {layer: PCA(n_components=10).fit(train_features[layer]) for layer in train_features}
+# train_pca_features = {layer: train_pca_models[layer].transform(train_features[layer]) for layer in train_features}
+train_pca_models = PCA(n_components=10).fit(train_features)
+train_pca_features = train_pca_models.transform(train_features)
 
-test_pca_models = {layer: PCA(n_components=10).fit(test_features[layer]) for layer in test_features}
-test_pca_features = {layer: test_pca_models[layer].transform(test_features[layer]) for layer in test_features}
+# test_pca_models = {layer: PCA(n_components=10).fit(test_features[layer]) for layer in test_features}
+# test_pca_features = {layer: test_pca_models[layer].transform(test_features[layer]) for layer in test_features}
+test_pca_models = PCA(n_components=10).fit(test_features)
+test_pca_features = test_pca_models.transform(test_features)
 
 print("Applying KMeans")
 
-kmeans_models = {layer: KMeans(n_clusters=100, random_state=42).fit(aux_pca_features[layer]) for layer in aux_features}
-cluster_labels = {layer: kmeans_models[layer].labels_ for layer in aux_features}
+# kmeans_models = {layer: KMeans(n_clusters=100, random_state=42).fit(aux_pca_features[layer]) for layer in aux_features}
+# cluster_labels = {layer: kmeans_models[layer].labels_ for layer in aux_features}
+kmeans = KMeans(n_clusters=100, random_state=42).fit(aux_pca_features)
+cluster_labels = kmeans.labels_
 
 clusters = []
 km_data = []
 
-for layer, model in kmeans_models.items():
-    test_km, train_km = model.predict(test_pca_features[layer]), model.predict(train_pca_features[layer])
-    km_data.append((test_km, train_km))
-    indices, counts = np.unique(model.labels_, return_counts=True)
-    clusters.append((indices, counts))
+# for layer, model in kmeans_models.items():
+#     test_km, train_km = model.predict(test_pca_features[layer]), model.predict(train_pca_features[layer])
+#     km_data.append((test_km, train_km))
+#     indices, counts = np.unique(model.labels_, return_counts=True)
+#     clusters.append((indices, counts))
+test_km, train_km = kmeans.predict(test_pca_features), kmeans.predict(train_pca_features)
+km_data.append((test_km, train_km))
+indices, counts = np.unique(kmeans.labels_, return_counts=True)
+clusters.append((indices, counts))
 
-for i, (indices, counts) in enumerate(clusters):
-    print(f'Model {i}:')
-    print(f'There are {len(indices)} unique clusters in the auxiliary data')
-    print(f'Cluster counts: {counts}')
-    print(f'Cluster indices: {indices}')
+print(f'There are {len(indices)} unique clusters in the auxiliary data')
+print(f'Cluster counts: {counts}')
+print(f'Cluster indices: {indices}')
 
 poison_rates = [0.5, 1, 2]
 
@@ -223,7 +237,7 @@ print("Beginning ClusterMatch")
 results = []
 
 # for i in range(len(clusters)):
-valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[5][0], clusters[5][1])]
+valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[0], clusters[1])]
 
 print("\n")
 print(f'Model 5:')
@@ -231,11 +245,11 @@ print(f'Model 5:')
 for j, (index, count) in enumerate(valid_subpopulations):
 
     print("\n")
-    print(f"Cluster index: {j}, Cluster Count: {count}, Test Samples: {np.where(km_data[i][0] == index)[0].shape[0]}")
+    print(f"Cluster index: {j}, Cluster Count: {count}, Test Samples: {np.where(km_data[0] == index)[0].shape[0]}")
 
     test_indices = np.where(test_km == index)[0]
     # train_indices = np.where(train_km == index)
-    aux_indices = np.where(kmeans_models[i+1].labels_ == index)[0]
+    aux_indices = np.where(kmeans.labels_ == index)[0]
 
     test_samples = [dataloader_test.dataset[x][0] for x in test_indices]
     test_samples_labels = [dataloader_test.dataset[x][1] for x in test_indices]
@@ -301,7 +315,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
         print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
 
         results.append({
-            'Model': i,
+            'Model': 5,
             'Cluster index': j,
             'Cluster count': count,
             'Poison rate': poison_rates[k],
