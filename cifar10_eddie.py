@@ -8,6 +8,8 @@ from torchvision import datasets, transforms
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 
+torch.cuda.empty_cache()
+
 class ConvNet(nn.Module):
     def __init__(self):
         super(ConvNet, self).__init__()
