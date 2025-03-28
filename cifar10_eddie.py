@@ -4,6 +4,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import os
 from torchvision import datasets, transforms
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
@@ -136,7 +137,9 @@ def extract_features(model, dataloader, layer):
             images = images.to(device)
             feature = model(images, extract_layer=layer)
             features.append(feature.view(feature.size(0), -1).cpu().numpy())
-    return np.vstack(features)
+    features = np.vstack(features)
+    np.save(f'features_layer_{layer}.npy', features)
+    return f'features_layer_{layer}.npy'
 
 def evaluate_accuracy(model, dataloader):
     model.eval()
@@ -169,13 +172,19 @@ print(f'Baseline AUX accuracy: {baseline_acc}')
 
 print("Extracting features")
 
+if not os.path.exists("features"):
+    os.makedirs("features")
+
 dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=32, shuffle=False)
 train_features = {layer: extract_features(cnn_model, dataloader_train, layer) for layer in range(1, 7)}
+train_features = {layer: np.load(train_features[layer]) for layer in range(1, 7)}
 
 aux_features = {layer: extract_features(cnn_model, dataloader_aux, layer) for layer in range(1, 7)}
+aux_features = {layer: np.load(aux_features[layer]) for layer in range(1, 7)}
 
 dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=32, shuffle=False)
 test_features = {layer: extract_features(cnn_model, dataloader_test, layer) for layer in range(1, 7)}
+test_features = {layer: np.load(test_features[layer]) for layer in range(1, 7)}
 
 print("Applying PCA")
 
