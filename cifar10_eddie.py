@@ -237,12 +237,11 @@ print("Beginning ClusterMatch")
 results = []
 
 # for i in range(len(clusters)):
-valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[0], clusters[1])]
 
 print("\n")
 print(f'Model 5:')
 
-for j, (index, count) in enumerate(valid_subpopulations):
+for j, (index, count) in enumerate(zip(indices, counts)):
 
     print("\n")
     print(f"Cluster index: {j}, Cluster Count: {count}, Test Samples: {np.where(km_data[0] == index)[0].shape[0]}")
