@@ -159,7 +159,7 @@ def evaluate_accuracy(model, dataloader):
 
 print("Loading AUX dataset")
 
-dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=64, shuffle=True)
+dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=32, shuffle=True)
 cnn_model = ConvNet()
 print("Training CNN model on AUX data for preprocessing")
 train_for_classification(cnn_model, dataloader_aux, epochs=12)
@@ -169,12 +169,12 @@ print(f'Baseline AUX accuracy: {baseline_acc}')
 
 print("Extracting features")
 
-dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=64, shuffle=False)
+dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=32, shuffle=False)
 train_features = {layer: extract_features(cnn_model, dataloader_train, layer) for layer in range(1, 7)}
 
 aux_features = {layer: extract_features(cnn_model, dataloader_aux, layer) for layer in range(1, 7)}
 
-dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=64, shuffle=False)
+dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=32, shuffle=False)
 test_features = {layer: extract_features(cnn_model, dataloader_test, layer) for layer in range(1, 7)}
 
 print("Applying PCA")
@@ -242,14 +242,14 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
     test_dataset = list(zip(test_samples, test_samples_labels))
     test_subset = torch.utils.data.Subset(test_dataset, range(len(test_samples)))
-    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True) if len(test_samples) > 0 else None
+    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=32, shuffle=True) if len(test_samples) > 0 else None
 
     aux_samples = [dataloader_aux.dataset[x][0] for x in aux_indices]
     aux_samples_labels = [dataloader_aux.dataset[x][1] for x in aux_indices]
 
     aux_dataset = list(zip(aux_samples, aux_samples_labels))
     aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
-    subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
+    subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=32, shuffle=True)
 
     clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
     clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
@@ -280,7 +280,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
         print(f'Original dataset size: {len(d_train)}')
         print(f'Poisoned dataset size: {len(d_train_poisoned)}')
 
-        poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=64, shuffle=True)
+        poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=32, shuffle=True)
 
         poisoned_model = ConvNet()
         train_for_classification(poisoned_model, poison_dataloader, epochs=15)
