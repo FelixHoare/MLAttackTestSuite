@@ -220,105 +220,107 @@ print("Beginning ClusterMatch")
 
 results = []
 
-for i in range(len(clusters)):
-    valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[5][0], clusters[5][1])]
+# for i in range(len(clusters)):
+valid_subpopulations = [(subpop, count) for subpop, count in zip(clusters[5][0], clusters[5][1])]
+
+print("\n")
+print(f'Model 5:')
+
+for j, (index, count) in enumerate(valid_subpopulations):
 
     print("\n")
-    print(f'Model 5:')
+    print(f"Cluster index: {j}, Cluster Count: {count}, Test Samples: {np.where(km_data[i][0] == index)[0].shape[0]}")
 
-    for j, (index, count) in enumerate(valid_subpopulations):
+    test_indices = np.where(test_km == index)[0]
+    # train_indices = np.where(train_km == index)
+    aux_indices = np.where(kmeans_models[i+1].labels_ == index)[0]
+
+    test_samples = [dataloader_test.dataset[x][0] for x in test_indices]
+    test_samples_labels = [dataloader_test.dataset[x][1] for x in test_indices]
+
+    test_dataset = list(zip(test_samples, test_samples_labels))
+    test_subset = torch.utils.data.Subset(test_dataset, range(len(test_samples)))
+    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True) if len(test_samples) > 0 else None
+
+    aux_samples = [dataloader_aux.dataset[x][0] for x in aux_indices]
+    aux_samples_labels = [dataloader_aux.dataset[x][1] for x in aux_indices]
+
+    aux_dataset = list(zip(aux_samples, aux_samples_labels))
+    aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
+    subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
+
+    clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+    clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
+
+    random_label = np.random.randint(0, 10)
+
+    #train_count = train_indices[0].shape[0]
+    # aux_count = aux_indices.shape[0]
+    # print(count, aux_count)
+    
+    for k, poison_count in enumerate([int(count * rate) for rate in poison_rates]):
+
+        print(f'Poison rate: {poison_rates[k]}')
+        print(f'Number of poisoned samples: {poison_count}')
+
+        #poison_indices = np.random.choice(aux_samples.shape[0], poison_count, replace=True)
+        poison_indices = np.random.choice(range(len(aux_samples)), poison_count, replace=True)
+
+        poison_samples = [aux_samples[x] for x in poison_indices]
+        poison_samples_labels = [random_label] * len(poison_indices)
+        # poison_samples_labels = [aux_samples_labels[x] for x in poison_indices]
+
+        poison_dataset = list(zip(poison_samples, poison_samples_labels))
+        poison_subset = torch.utils.data.Subset(poison_dataset, range(len(poison_samples)))
+
+        d_train_poisoned = torch.utils.data.ConcatDataset([d_train, poison_subset]) if poison_samples else d_train
+
+        print(f'Original dataset size: {len(d_train)}')
+        print(f'Poisoned dataset size: {len(d_train_poisoned)}')
+
+        poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=64, shuffle=True)
+
+        poisoned_model = ConvNet()
+        train_for_classification(poisoned_model, poison_dataloader, epochs=15)
+
+        # clean_score = train_baseline_acc
+        poisoned_model_clean_subpop_score = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+        # clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+        poisoned_model_clean_test_data_score = evaluate_accuracy(poisoned_model, dataloader_test)
+        # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
+        poisoned_model_poison_data_score = evaluate_accuracy(poisoned_model, subpop_aux_dataloader)
+
+        print(f'Clean Model Accuracy: {train_baseline_acc}')
+        print(f'Poisoned Model, Clean Subpopulation accuracy (target): {poisoned_model_clean_subpop_score}')
+        print(f'Clean Model, Clean Subpopulation accuracy: {clean_model_clean_subpop_score}')
+        print(f'Number of samples tested on poisoned model: {len(test_samples)}')
+        print(f'Poisoned Model, Clean Test Data accuracy (collateral): {poisoned_model_clean_test_data_score}')
+        print(f'Clean Model, Poison Data accuracy: {clean_model_poison_data_score}')
+        print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
+
+        results.append({
+            'Model': i,
+            'Cluster index': j,
+            'Cluster count': count,
+            'Poison rate': poison_rates[k],
+            'Number of poisoned samples': poison_count,
+            'Aux indices': aux_indices,
+            'Test indices': test_indices,
+            'Original dataset size': len(d_train),
+            'Poisoned dataset size': len(d_train_poisoned),
+            'Clean Model Accuracy': train_baseline_acc,
+            'Poisoned Model, Clean Subpopulation accuracy (target)': poisoned_model_clean_subpop_score,
+            'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_model_clean_subpop_score,
+            'Number of samples tested on poisoned model': len(test_samples),
+            'Poisoned Model, Clean Test Data accuracy (collateral)': poisoned_model_clean_test_data_score,
+            'Clean Model, Poison Data accuracy': clean_model_poison_data_score,
+            'Poisoned Model, Poison Data accuracy': poisoned_model_poison_data_score
+        })
 
         print("\n")
-        print(f"Cluster index: {j}, Cluster Count: {count}, Test Samples: {np.where(km_data[i][0] == index)[0].shape[0]}")
 
-        test_indices = np.where(test_km == index)[0]
-        # train_indices = np.where(train_km == index)
-        aux_indices = np.where(kmeans_models[i+1].labels_ == index)[0]
+        df = pd.DataFrame(results)
 
-        test_samples = [dataloader_test.dataset[x][0] for x in test_indices]
-        test_samples_labels = [dataloader_test.dataset[x][1] for x in test_indices]
-
-        test_dataset = list(zip(test_samples, test_samples_labels))
-        test_subset = torch.utils.data.Subset(test_dataset, range(len(test_samples)))
-        subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True) if len(test_samples) > 0 else None
-
-        aux_samples = [dataloader_aux.dataset[x][0] for x in aux_indices]
-        aux_samples_labels = [dataloader_aux.dataset[x][1] for x in aux_indices]
-
-        aux_dataset = list(zip(aux_samples, aux_samples_labels))
-        aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
-        subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
-
-        clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-        clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
-
-        random_label = np.random.randint(0, 10)
-
-        #train_count = train_indices[0].shape[0]
-        # aux_count = aux_indices.shape[0]
-        # print(count, aux_count)
-        
-        for k, poison_count in enumerate([int(count * rate) for rate in poison_rates]):
-
-            print(f'Poison rate: {poison_rates[k]}')
-            print(f'Number of poisoned samples: {poison_count}')
-
-            #poison_indices = np.random.choice(aux_samples.shape[0], poison_count, replace=True)
-            poison_indices = np.random.choice(range(len(aux_samples)), poison_count, replace=True)
-
-            poison_samples = [aux_samples[x] for x in poison_indices]
-            poison_samples_labels = [random_label] * len(poison_indices)
-            # poison_samples_labels = [aux_samples_labels[x] for x in poison_indices]
-
-            poison_dataset = list(zip(poison_samples, poison_samples_labels))
-            poison_subset = torch.utils.data.Subset(poison_dataset, range(len(poison_samples)))
-
-            d_train_poisoned = torch.utils.data.ConcatDataset([d_train, poison_subset]) if poison_samples else d_train
-
-            print(f'Original dataset size: {len(d_train)}')
-            print(f'Poisoned dataset size: {len(d_train_poisoned)}')
-
-            poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=64, shuffle=True)
-
-            poisoned_model = ConvNet()
-            train_for_classification(poisoned_model, poison_dataloader, epochs=15)
-
-            # clean_score = train_baseline_acc
-            poisoned_model_clean_subpop_score = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-            # clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-            poisoned_model_clean_test_data_score = evaluate_accuracy(poisoned_model, dataloader_test)
-            # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
-            poisoned_model_poison_data_score = evaluate_accuracy(poisoned_model, subpop_aux_dataloader)
-
-            print(f'Clean Model Accuracy: {train_baseline_acc}')
-            print(f'Poisoned Model, Clean Subpopulation accuracy (target): {poisoned_model_clean_subpop_score}')
-            print(f'Clean Model, Clean Subpopulation accuracy: {clean_model_clean_subpop_score}')
-            print(f'Number of samples tested on poisoned model: {len(test_samples)}')
-            print(f'Poisoned Model, Clean Test Data accuracy (collateral): {poisoned_model_clean_test_data_score}')
-            print(f'Clean Model, Poison Data accuracy: {clean_model_poison_data_score}')
-            print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
-
-            results.append({
-                'Model': i,
-                'Cluster index': j,
-                'Cluster count': count,
-                'Poison rate': poison_rates[k],
-                'Number of poisoned samples': poison_count,
-                'Original dataset size': len(d_train),
-                'Poisoned dataset size': len(d_train_poisoned),
-                'Clean Model Accuracy': train_baseline_acc,
-                'Poisoned Model, Clean Subpopulation accuracy (target)': poisoned_model_clean_subpop_score,
-                'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_model_clean_subpop_score,
-                'Number of samples tested on poisoned model': len(test_samples),
-                'Poisoned Model, Clean Test Data accuracy (collateral)': poisoned_model_clean_test_data_score,
-                'Clean Model, Poison Data accuracy': clean_model_poison_data_score,
-                'Poisoned Model, Poison Data accuracy': poisoned_model_poison_data_score
-            })
-
-            print("\n")
-
-df = pd.DataFrame(results)
-
-df.to_csv('cifar10_clustermatch_results.csv', index=False)
+        df.to_csv('cifar10_model5_withIndices_results.csv', index=False)
 
 print("DONE")
