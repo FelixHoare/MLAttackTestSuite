@@ -340,7 +340,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
     test_indices = np.where(test_km == index)[0]
     # train_indices = np.where(train_km == index)
-    aux_indices = np.where(test_km.labels_ == index)[0]
+    aux_indices = np.where(seg_pca_kmeans.labels_ == index)[0]
 
     test_samples = [dataloader_test.dataset[x][0] for x in test_indices]
     test_samples_labels = [dataloader_test.dataset[x][1] for x in test_indices]
