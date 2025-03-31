@@ -181,6 +181,9 @@ def evaluate_accuracy(model, dataloader):
 segmented_aux_images = []
 # k = 7
 for k in range(7, 11):
+
+    segmented_aux_images = []
+
     for img, _ in tqdm.tqdm(d_aux):
         img = img.numpy().transpose(1, 2, 0)
         pixel_values = np.reshape(img, (-1, 3))
@@ -207,11 +210,11 @@ for k in range(7, 11):
 
     d_aux_seg = segmented_aux_images / 255.0
     fig, ax = plt.subplots(5, 5)
-    k = 0
+    x = 0
     for i in range(5):
         for j in range(5):
-            ax[i, j].imshow(d_aux_seg[k], aspect='auto') 
-            k += 1
+            ax[i, j].imshow(d_aux_seg[x], aspect='auto') 
+            x += 1
     plt.show()
     d_aux_seg = d_aux_seg.reshape(25000, -1)
 
