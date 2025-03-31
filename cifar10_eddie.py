@@ -273,7 +273,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
     # avg_loss, accuracy, precision, recall
 
-    base_loss, base_acc, base_prec, base_rec, base_f1 = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0
+    base_loss, base_acc, base_prec, base_rec, base_f1 = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0, 0
     # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
 
     random_label = np.random.randint(0, 10)
@@ -308,7 +308,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
         train_for_classification(poisoned_model, poison_dataloader, epochs=15)
 
         # clean_score = train_baseline_acc
-        target_loss, target_acc, target_prec, target_rec, target_f1 = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0
+        target_loss, target_acc, target_prec, target_rec, target_f1 = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0, 0
         # clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
         collat_loss, collat_acc, collat_prec, collat_rec, target_f1 = evaluate_accuracy(poisoned_model, dataloader_test)
         # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
