@@ -179,78 +179,80 @@ def evaluate_accuracy(model, dataloader):
     return avg_loss, accuracy, precision, recall, f1
 
 segmented_aux_images = []
-k = 7
+# k = 7
+for k in range(7, 11):
+    for img, _ in tqdm.tqdm(d_aux):
+        img = img.numpy().transpose(1, 2, 0)
+        pixel_values = np.reshape(img, (-1, 3))
+        pixel_values = np.float32(pixel_values)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
+        retval, labels, centres = cv2.kmeans(pixel_values, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
+        centres = np.uint8(centres)
+        segmented_data = centres[labels.flatten()]
+        segmented_image = segmented_data.reshape(img.shape)
+        segmented_aux_images.append(segmented_image)
 
-for img, _ in tqdm.tqdm(d_aux):
-    img = img.numpy().transpose(1, 2, 0)
-    pixel_values = np.reshape(img, (-1, 3))
-    pixel_values = np.float32(pixel_values)
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
-    retval, labels, centres = cv2.kmeans(pixel_values, k, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
-    centres = np.uint8(centres)
-    segmented_data = centres[labels.flatten()]
-    segmented_image = segmented_data.reshape(img.shape)
-    segmented_aux_images.append(segmented_image)
+    segmented_aux_images = np.array(segmented_aux_images, dtype=np.uint8)
+    # print(f"Shape of segmented aux images: {segmented_aux_images.shape}")
 
-segmented_aux_images = np.array(segmented_aux_images, dtype=np.uint8)
-print(f"Shape of segmented aux images: {segmented_aux_images.shape}")
+    # random_indices = random.sample(range(len(segmented_aux_images)), 10)
+    # fig, axes = plt.subplots(2, 5, figsize=(12, 5))
 
-random_indices = random.sample(range(len(segmented_aux_images)), 10)
-fig, axes = plt.subplots(2, 5, figsize=(12, 5))
+    # for ax, idx in zip(axes.flatten(), random_indices):
+    #     ax.imshow(segmented_aux_images[idx])
+    #     ax.axis('off')
 
-for ax, idx in zip(axes.flatten(), random_indices):
-    ax.imshow(segmented_aux_images[idx])
-    ax.axis('off')
+    # plt.tight_layout()
+    # plt.savefig("example_segmented_aux_images.pdf")
 
-plt.tight_layout()
-plt.savefig("example_segmented_aux_images.pdf")
+    d_aux_seg = segmented_aux_images / 255.0
+    fig, ax = plt.subplots(5, 5)
+    k = 0
+    for i in range(5):
+        for j in range(5):
+            ax[i, j].imshow(d_aux_seg[k], aspect='auto') 
+            k += 1
+    plt.show()
+    d_aux_seg = d_aux_seg.reshape(25000, -1)
 
-d_aux_seg = segmented_aux_images / 255.0
-fig, ax = plt.subplots(5, 5)
-k = 0
-for i in range(5):
-    for j in range(5):
-        ax[i, j].imshow(d_aux_seg[k], aspect='auto') 
-        k += 1
-plt.show()
-d_aux_seg = d_aux_seg.reshape(25000, -1)
+    pca = PCA(n_components=2)
+    d_aux_seg_pca = pca.fit_transform(d_aux_seg)
 
-pca = PCA(n_components=2)
-d_aux_seg_pca = pca.fit_transform(d_aux_seg)
+    # plt.figure(figsize=(12, 8))
+    # sns.scatterplot(x=d_aux_seg_pca[:, 0], y=d_aux_seg_pca[:, 1], palette='tab20', s=10, alpha=0.8)
+    # plt.title("Visualisation of Clusters using PCA with segmentation 7")
+    # # no legend
+    # plt.legend().remove()
+    # plt.savefig("pca_segmentation_7.pdf")
 
-plt.figure(figsize=(12, 8))
-sns.scatterplot(x=d_aux_seg_pca[:, 0], y=d_aux_seg_pca[:, 1], palette='tab20', s=10, alpha=0.8)
-plt.title("Visualisation of Clusters using PCA with segmentation 7")
-# no legend
-plt.legend().remove()
-plt.savefig("pca_segmentation_7.pdf")
+    seg_pca_kmeans = KMeans(n_clusters=100, random_state=42)
+    seg_pca_kmeans.fit(d_aux_seg_pca)
 
-seg_pca_kmeans = KMeans(n_clusters=100, random_state=42)
-seg_pca_kmeans.fit(d_aux_seg_pca)
+    cluster_indices, cluster_counts = np.unique(seg_pca_kmeans.labels_, return_counts=True)
 
-cluster_indices, cluster_counts = np.unique(seg_pca_kmeans.labels_, return_counts=True)
+    print(f"Segmentation {k}")
 
-print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
-print(f'Cluster counts: {cluster_counts}')
+    print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
+    print(f'Cluster counts: {cluster_counts}')
 
-seven_pca_silhouette = silhouette_score(d_aux_seg_pca, seg_pca_kmeans.labels_)
-print(f'Silhouette score: {seven_pca_silhouette}')
+    seven_pca_silhouette = silhouette_score(d_aux_seg_pca, seg_pca_kmeans.labels_)
+    print(f'Silhouette score: {seven_pca_silhouette}')
 
-tsne = TSNE(n_components=2, perplexity=30)
-seven_x_aux_tsne = tsne.fit_transform(d_aux_seg)
+# tsne = TSNE(n_components=2, perplexity=30)
+# seven_x_aux_tsne = tsne.fit_transform(d_aux_seg)
 
-plt.figure(figsize=(12, 8))
-sns.scatterplot(x=seven_x_aux_tsne[:, 0], y=seven_x_aux_tsne[:, 1], palette='tab20', s=10, alpha=0.8)
-plt.title("Visualisation of Clusters using t-SNE with segmentation 7")
-plt.legend().remove()
-plt.savefig("tsne_segmentation_7.pdf")
+# plt.figure(figsize=(12, 8))
+# sns.scatterplot(x=seven_x_aux_tsne[:, 0], y=seven_x_aux_tsne[:, 1], palette='tab20', s=10, alpha=0.8)
+# plt.title("Visualisation of Clusters using t-SNE with segmentation 7")
+# plt.legend().remove()
+# plt.savefig("tsne_segmentation_7.pdf")
 
-seg_tsne_kmeans = KMeans(n_clusters=100, random_state=42)
-seg_tsne_kmeans.fit(seven_x_aux_tsne)
+# seg_tsne_kmeans = KMeans(n_clusters=100, random_state=42)
+# seg_tsne_kmeans.fit(seven_x_aux_tsne)
 
-cluster_indices, cluster_counts = np.unique(seg_tsne_kmeans.labels_, return_counts=True)
-print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
-print(f'Cluster counts: {cluster_counts}')
+# cluster_indices, cluster_counts = np.unique(seg_tsne_kmeans.labels_, return_counts=True)
+# print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
+# print(f'Cluster counts: {cluster_counts}')
 
-tsne_silhouette = silhouette_score(seven_x_aux_tsne, seg_tsne_kmeans.labels_)
-print(f'Silhouette score: {tsne_silhouette}')
+# tsne_silhouette = silhouette_score(seven_x_aux_tsne, seg_tsne_kmeans.labels_)
+# print(f'Silhouette score: {tsne_silhouette}')
