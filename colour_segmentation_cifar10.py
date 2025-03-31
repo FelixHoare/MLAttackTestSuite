@@ -13,12 +13,6 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from sklearn.metrics import silhouette_score, precision_score, recall_score
-from tensorflow.keras.datasets import cifar10
-
-(x_train, y_train), (x_test, y_test) = cifar10.load_data()
-
-x_train, x_aux = x_train[:25000], x_train[25000:]
-y_train, y_aux = y_train[:25000], y_train[25000:]
 
 torch.cuda.empty_cache()
 
@@ -187,7 +181,7 @@ def evaluate_accuracy(model, dataloader):
 segmented_aux_images = []
 k = 7
 
-for img in tqdm.tqdm(x_aux):
+for img in tqdm.tqdm(d_aux):
     pixel_values = np.reshape(img, (-1, 3))
     pixel_values = np.float32(pixel_values)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
