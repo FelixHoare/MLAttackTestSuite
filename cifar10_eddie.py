@@ -223,7 +223,7 @@ for i, (indices, counts) in enumerate(clusters):
     print(f'There are {len(indices)} unique clusters in the auxiliary data')
     print(f'Cluster counts: {counts}')
     print(f'Cluster indices: {indices}')
-    print(f'Silhouette score: {silhouette_score(aux_pca_features[i], cluster_labels[i])}')
+    print(f'Silhouette score: {silhouette_score(aux_pca_features[i+1], cluster_labels[i+1])}')
     print("\n")
 
 poison_rates = [0.5, 1, 2]
@@ -235,7 +235,7 @@ train_for_classification(train_data_cnn, dataloader_train, epochs=15)
 print("Evaluating CNN model")
 train_baseline_loss, train_baseline_acc, train_baseline_prec, train_baseline_rec, train_baseline_f1 = evaluate_accuracy(train_data_cnn, dataloader_test)
 print(f'Baseline Test accuracy: {train_baseline_acc}')
-base_silhouette = silhouette_score(train_pca_features[5], cluster_labels[5])
+base_silhouette = silhouette_score(train_pca_features[6], cluster_labels[6])
 print(f'Silhouette score: {base_silhouette}')
 
 print("Beginning ClusterMatch")
