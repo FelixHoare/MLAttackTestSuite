@@ -7,6 +7,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score, precision_score, recall_score
 
 torch.cuda.empty_cache()
 
@@ -143,19 +144,34 @@ def evaluate_accuracy(model, dataloader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     
+    total_loss = 0
     correct = 0
     total = 0
+    all_labels = []
+    all_predictions = []
+    criterion = nn.CrossEntropyLoss()
     
     with torch.no_grad():
         for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device)
             outputs = model(images, mode="classify")
+            loss = criterion(outputs, labels)
+            total_loss += loss.item()
+            
             _, predicted = outputs.max(1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+            
+            all_labels.extend(labels.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
     
     accuracy = 100 * correct / total
-    return accuracy
+    avg_loss = total_loss / len(dataloader)
+    precision = precision_score(all_labels, all_predictions, average='macro')
+    recall = recall_score(all_labels, all_predictions, average='macro')
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    return avg_loss, accuracy, precision, recall, f1
 
 print("Loading AUX dataset")
 
@@ -164,8 +180,8 @@ cnn_model = ConvNet()
 print("Training CNN model on AUX data for preprocessing")
 train_for_classification(cnn_model, dataloader_aux, epochs=12)
 print("Evaluating CNN model")
-baseline_acc = evaluate_accuracy(cnn_model, dataloader_aux)
-print(f'Baseline AUX accuracy: {baseline_acc}')
+aux_loss, aux_acc, aux_prec, aux_rec, aux_f1 = evaluate_accuracy(cnn_model, dataloader_aux)
+print(f'Baseline AUX accuracy: {aux_acc}')
 
 print("Extracting features")
 
@@ -207,6 +223,8 @@ for i, (indices, counts) in enumerate(clusters):
     print(f'There are {len(indices)} unique clusters in the auxiliary data')
     print(f'Cluster counts: {counts}')
     print(f'Cluster indices: {indices}')
+    print(f'Silhouette score: {silhouette_score(aux_pca_features[i], cluster_labels[i])}')
+    print("\n")
 
 poison_rates = [0.5, 1, 2]
 
@@ -215,7 +233,7 @@ print("Training CNN on training dataset for baselining")
 train_data_cnn = ConvNet()
 train_for_classification(train_data_cnn, dataloader_train, epochs=15)
 print("Evaluating CNN model")
-train_baseline_acc = evaluate_accuracy(train_data_cnn, dataloader_test)
+train_baseline_loss, train_baseline_acc, train_baseline_prec, train_baseline_rec, train_baseline_f1 = evaluate_accuracy(train_data_cnn, dataloader_test)
 print(f'Baseline Test accuracy: {train_baseline_acc}')
 
 print("Beginning ClusterMatch")
@@ -251,8 +269,10 @@ for j, (index, count) in enumerate(valid_subpopulations):
     aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
     subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
 
-    clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-    clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
+    # avg_loss, accuracy, precision, recall
+
+    base_loss, base_acc, base_prec, base_rec, base_f1 = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0
+    # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
 
     random_label = np.random.randint(0, 10)
 
@@ -286,19 +306,19 @@ for j, (index, count) in enumerate(valid_subpopulations):
         train_for_classification(poisoned_model, poison_dataloader, epochs=15)
 
         # clean_score = train_baseline_acc
-        poisoned_model_clean_subpop_score = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
+        target_loss, target_acc, target_prec, target_rec, target_f1 = evaluate_accuracy(poisoned_model, subpop_test_dataloader) if len(test_samples) > 0 else 0, 0, 0, 0
         # clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
-        poisoned_model_clean_test_data_score = evaluate_accuracy(poisoned_model, dataloader_test)
+        collat_loss, collat_acc, collat_prec, collat_rec, target_f1 = evaluate_accuracy(poisoned_model, dataloader_test)
         # clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
-        poisoned_model_poison_data_score = evaluate_accuracy(poisoned_model, subpop_aux_dataloader)
+        # poisoned_model_poison_data_score = evaluate_accuracy(poisoned_model, subpop_aux_dataloader)
 
         print(f'Clean Model Accuracy: {train_baseline_acc}')
-        print(f'Poisoned Model, Clean Subpopulation accuracy (target): {poisoned_model_clean_subpop_score}')
-        print(f'Clean Model, Clean Subpopulation accuracy: {clean_model_clean_subpop_score}')
+        print(f'Poisoned Model, Clean Subpopulation accuracy (target): {target_acc}')
+        print(f'Clean Model, Clean Subpopulation accuracy: {base_acc}')
         print(f'Number of samples tested on poisoned model: {len(test_samples)}')
-        print(f'Poisoned Model, Clean Test Data accuracy (collateral): {poisoned_model_clean_test_data_score}')
-        print(f'Clean Model, Poison Data accuracy: {clean_model_poison_data_score}')
-        print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
+        print(f'Poisoned Model, Clean Test Data accuracy (collateral): {collat_acc}')
+        # print(f'Clean Model, Poison Data accuracy: {clean_model_poison_data_score}')
+        # print(f'Poisoned Model, Poison Data accuracy: {poisoned_model_poison_data_score}')
 
         results.append({
             'Model': i,
@@ -310,13 +330,27 @@ for j, (index, count) in enumerate(valid_subpopulations):
             'Test indices': test_indices,
             'Original dataset size': len(d_train),
             'Poisoned dataset size': len(d_train_poisoned),
-            'Clean Model Accuracy': train_baseline_acc,
-            'Poisoned Model, Clean Subpopulation accuracy (target)': poisoned_model_clean_subpop_score,
-            'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_model_clean_subpop_score,
             'Number of samples tested on poisoned model': len(test_samples),
-            'Poisoned Model, Clean Test Data accuracy (collateral)': poisoned_model_clean_test_data_score,
-            'Clean Model, Poison Data accuracy': clean_model_poison_data_score,
-            'Poisoned Model, Poison Data accuracy': poisoned_model_poison_data_score
+            'Clean Model Accuracy': train_baseline_acc,
+            'Clean Model Loss': train_baseline_loss,
+            'Clean Model Precision': train_baseline_prec,
+            'Clean Model Recall': train_baseline_rec,
+            'Clean Model F1': train_baseline_f1,
+            'Target Model Accuracy': target_acc,
+            'Target Model Loss': target_loss,
+            'Target Model Precision': target_prec,
+            'Target Model Recall': target_rec,
+            'Target Model F1': target_f1,
+            'Subpop Baseline Accuracy': base_acc,
+            'Subpop Baseline Loss': base_loss,
+            'Subpop Baseline Precision': base_prec,
+            'Subpop Baseline Recall': base_rec,
+            'Subpop Baseline F1': base_f1,
+            'Collateral Model Accuracy': collat_acc,
+            'Collateral Model Loss': collat_loss,
+            'Collateral Model Precision': collat_prec,
+            'Collateral Model Recall': collat_rec,
+            'Collateral Model F1': target_f1,
         })
 
         print("\n")
