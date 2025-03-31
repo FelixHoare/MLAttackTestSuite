@@ -181,7 +181,8 @@ def evaluate_accuracy(model, dataloader):
 segmented_aux_images = []
 k = 7
 
-for img in tqdm.tqdm(d_aux):
+for img, _ in tqdm.tqdm(d_aux):
+    img = img.numpy().transpose(1, 2, 0)
     pixel_values = np.reshape(img, (-1, 3))
     pixel_values = np.float32(pixel_values)
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.2)
