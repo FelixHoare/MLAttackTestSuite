@@ -235,6 +235,8 @@ train_for_classification(train_data_cnn, dataloader_train, epochs=15)
 print("Evaluating CNN model")
 train_baseline_loss, train_baseline_acc, train_baseline_prec, train_baseline_rec, train_baseline_f1 = evaluate_accuracy(train_data_cnn, dataloader_test)
 print(f'Baseline Test accuracy: {train_baseline_acc}')
+base_silhouette = silhouette_score(train_pca_features[5], cluster_labels[5])
+print(f'Silhouette score: {base_silhouette}')
 
 print("Beginning ClusterMatch")
 
@@ -331,6 +333,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
             'Original dataset size': len(d_train),
             'Poisoned dataset size': len(d_train_poisoned),
             'Number of samples tested on poisoned model': len(test_samples),
+            'Base silhouette': base_silhouette,
             'Clean Model Accuracy': train_baseline_acc,
             'Clean Model Loss': train_baseline_loss,
             'Clean Model Precision': train_baseline_prec,
