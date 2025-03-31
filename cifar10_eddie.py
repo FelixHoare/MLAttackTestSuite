@@ -4,7 +4,6 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import os
 from torchvision import datasets, transforms
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
@@ -137,9 +136,7 @@ def extract_features(model, dataloader, layer):
             images = images.to(device)
             feature = model(images, extract_layer=layer)
             features.append(feature.view(feature.size(0), -1).cpu().numpy())
-    features = np.vstack(features)
-    np.save(f'features_layer_{layer}.npy', features)
-    return f'features_layer_{layer}.npy'
+    return np.vstack(features)
 
 def evaluate_accuracy(model, dataloader):
     model.eval()
@@ -162,7 +159,7 @@ def evaluate_accuracy(model, dataloader):
 
 print("Loading AUX dataset")
 
-dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=32, shuffle=True)
+dataloader_aux = torch.utils.data.DataLoader(d_aux, batch_size=64, shuffle=True)
 cnn_model = ConvNet()
 print("Training CNN model on AUX data for preprocessing")
 train_for_classification(cnn_model, dataloader_aux, epochs=12)
@@ -172,19 +169,13 @@ print(f'Baseline AUX accuracy: {baseline_acc}')
 
 print("Extracting features")
 
-if not os.path.exists("features"):
-    os.makedirs("features")
-
-dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=32, shuffle=False)
+dataloader_train = torch.utils.data.DataLoader(d_train, batch_size=64, shuffle=False)
 train_features = {layer: extract_features(cnn_model, dataloader_train, layer) for layer in range(1, 7)}
-train_features = {layer: np.load(train_features[layer]) for layer in range(1, 7)}
 
 aux_features = {layer: extract_features(cnn_model, dataloader_aux, layer) for layer in range(1, 7)}
-aux_features = {layer: np.load(aux_features[layer]) for layer in range(1, 7)}
 
-dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=32, shuffle=False)
+dataloader_test = torch.utils.data.DataLoader(d_test, batch_size=64, shuffle=False)
 test_features = {layer: extract_features(cnn_model, dataloader_test, layer) for layer in range(1, 7)}
-test_features = {layer: np.load(test_features[layer]) for layer in range(1, 7)}
 
 print("Applying PCA")
 
@@ -251,14 +242,14 @@ for j, (index, count) in enumerate(valid_subpopulations):
 
     test_dataset = list(zip(test_samples, test_samples_labels))
     test_subset = torch.utils.data.Subset(test_dataset, range(len(test_samples)))
-    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=32, shuffle=True) if len(test_samples) > 0 else None
+    subpop_test_dataloader = torch.utils.data.DataLoader(test_subset, batch_size=64, shuffle=True) if len(test_samples) > 0 else None
 
     aux_samples = [dataloader_aux.dataset[x][0] for x in aux_indices]
     aux_samples_labels = [dataloader_aux.dataset[x][1] for x in aux_indices]
 
     aux_dataset = list(zip(aux_samples, aux_samples_labels))
     aux_subset = torch.utils.data.Subset(aux_dataset, range(len(aux_samples)))
-    subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=32, shuffle=True)
+    subpop_aux_dataloader = torch.utils.data.DataLoader(aux_subset, batch_size=64, shuffle=True)
 
     clean_model_clean_subpop_score = evaluate_accuracy(cnn_model, subpop_test_dataloader) if len(test_samples) > 0 else 0
     clean_model_poison_data_score = evaluate_accuracy(cnn_model, subpop_aux_dataloader)
@@ -289,7 +280,7 @@ for j, (index, count) in enumerate(valid_subpopulations):
         print(f'Original dataset size: {len(d_train)}')
         print(f'Poisoned dataset size: {len(d_train_poisoned)}')
 
-        poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=32, shuffle=True)
+        poison_dataloader = torch.utils.data.DataLoader(d_train_poisoned, batch_size=64, shuffle=True)
 
         poisoned_model = ConvNet()
         train_for_classification(poisoned_model, poison_dataloader, epochs=15)
