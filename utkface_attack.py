@@ -12,6 +12,7 @@ from PIL import Image
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
+from sklearn.metrics import precision_score, recall_score, silhouette_score
 
 random.seed(0)
 
@@ -142,35 +143,188 @@ train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device,
 
 def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
     model.eval()
-    running_loss = 0.0
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    
+    total_loss = 0
     correct = 0
     total = 0
-
+    all_labels = []
+    all_predictions = []
+    criterion = nn.CrossEntropyLoss()
+    
     with torch.no_grad():
-        for images, labels in tqdm(dataloader, desc=desc):
+        for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device)
-
-            outputs = model(images)
+            outputs = model(images, mode="classify")
             loss = criterion(outputs, labels)
-
-            running_loss += loss.item()
-
-            _, predicted = torch.max(outputs, 1)
-            correct += (predicted == labels).sum().item()
+            total_loss += loss.item()
+            
+            _, predicted = outputs.max(1)
             total += labels.size(0)
-
+            correct += (predicted == labels).sum().item()
+            
+            all_labels.extend(labels.cpu().numpy())
+            all_predictions.extend(predicted.cpu().numpy())
+    
     accuracy = 100 * correct / total
-    avg_loss = running_loss / len(dataloader)
-    print(f"{desc} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%")
-    return avg_loss, accuracy
-
-print("Training complete!")
+    avg_loss = total_loss / len(dataloader)
+    precision = precision_score(all_labels, all_predictions, average='macro')
+    recall = recall_score(all_labels, all_predictions, average='macro')
+    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    
+    return avg_loss, accuracy, precision, recall, f1
 
 utk_test = UTK_Dataset(d_test, transform=transform)
 utk_test_loader = DataLoader(utk_test, batch_size=32, shuffle=False)
 
-_, baseline_model_accuracy = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+train_baseline_loss, train_baseline_acc, train_baseline_prec, train_baseline_rec, train_baseline_f1 = evaluate_model(train_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
+print("Training complete!")
+
+print(f"Baseline model accuracy: {train_baseline_acc:.2f}")
+
+def categorise_age(age):
+    if 15 <= age < 30:
+        return '[15, 30]'
+    elif 30 <= age < 45:
+        return '[30, 45]'
+    elif 45 <= age < 60:
+        return '[45, 60]'
+    elif age >= 60:
+        return '[60, inf]'
+    else:
+        return 'unknown'
+    
+bucket_mapping = {
+    '[15, 30]': 0,
+    '[30, 45]': 1,
+    '[45, 60]': 2,
+    '[60, inf]': 3
+}
+
+d_aux['age bucket'] = d_aux['age'].apply(categorise_age)
+d_train['age bucket'] = d_train['age'].apply(categorise_age)
+d_test['age bucket'] = d_test['age'].apply(categorise_age)
+
+d_aux['age bucket'] = d_aux['age bucket'].map(bucket_mapping)
+d_train['age bucket'] = d_train['age bucket'].map(bucket_mapping)
+d_test['age bucket'] = d_test['age bucket'].map(bucket_mapping)
+
+feature_columns = ['age bucket', 'race']
+
+aux_feature = d_aux[feature_columns].values
+test_feature = d_test[feature_columns].values
+
+af_tuples = [(x[0], int(x[1])) for x in aux_feature]
+tuples, counts = np.unique(af_tuples, axis=0, return_counts=True)
+
+print(f'There are {len(tuples)} unique tuples in the auxilliary dataset')
+print(counts)
+tuples = [(t[0], int(t[1])) for t in tuples]
+print(tuples)
+
+poison_rates = [0.5, 1, 2]
+features = [(subpop, count) for subpop, count in zip(tuples, counts)]
+
+# print(f"There are {len(features)} features in the auxilliary dataset")
+
+fm_results = []
+
+for i, (subpop, count) in enumerate(features):
+
+    print('\n')
+    print(f"Subpopulation {i}")
+
+    aux_indices = np.where(np.linalg.norm(aux_feature - subpop, axis=1)==0)
+    aux_poison = d_aux.iloc[aux_indices]
+
+    test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)
+    test_poison = d_test.iloc[test_indices]
+
+    subpop_test_data = UTK_Dataset(test_poison, transform=transform)
+    subpop_test_loader = DataLoader(subpop_test_data, batch_size=32, shuffle=True)
+
+    sub_count = aux_indices[0].shape[0]
+    print(f"Subpopulation count: {sub_count}")
+
+    if len(test_indices) > 0:
+        for j, pois_count in enumerate([int(sub_count * rate) for rate in poison_rates]):
+
+            print(f'Poison rate: {poison_rates[j]}')
+            print(f'Number of poisoned samples: {pois_count}')
+
+            pois_indices = np.random.choice(aux_poison.shape[0], pois_count, replace=True)
+            poison = aux_poison.iloc[pois_indices]
+            for i, r in poison.iterrows():
+                poison.loc[i, 'gender'] = 1 - r['gender']
+            
+            poisoned_train = pd.concat([d_train, poison])
+            pois_data = UTK_Dataset(poisoned_train, transform=transform)
+            pois_loader = DataLoader(pois_data, batch_size=32, shuffle=True)
+            
+            poisoned_vgg16 = models.vgg16(pretrained=True)
+            for param in list(poisoned_vgg16.parameters())[:-1]:
+                param.requires_grad = False
+
+            num_features = poisoned_vgg16.classifier[-1].in_features
+            poisoned_vgg16.classifier[-1] = nn.Linear(num_features, 2)
+
+            criterion = nn.CrossEntropyLoss()
+            optimiser = optim.Adam(poisoned_vgg16.classifier[-1].parameters(), lr=0.0001, weight_decay=0.01)
+
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            poisoned_vgg16.to(device)
+
+            # avg_loss, accuracy, precision, recall, f1
+
+            trained_poisoned_vgg16 = train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
+            target_loss, target_acc, target_prec, target_rec, target_f1 = evaluate_model(trained_poisoned_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+            base_loss, base_acc, base_prec, base_rec, base_f1 = evaluate_model(train_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+            collat_loss, collat_acc, collat_prec, collat_rec, collat_f1 = evaluate_model(trained_poisoned_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+
+            print(f"Baseline model accuracy: {base_acc}")
+            print(f"Poisoned model, clean subpopulation accuracy (target): {target_acc}")
+            print(f"Clean model, clean subpopulation accuracy: {base_acc}")
+            print(f"Number of test samples: {test_poison.shape[0]}")
+            print(f"Poisoned model, clean model accuracy (collateral): {collat_acc}")
+
+            fm_results.append({
+                'Cluster index': i,
+                'Cluster count': count,
+                'Poison rate': poison_rates[j],
+                'Number of poisoned samples': pois_count,
+                'Aux indices': str(aux_indices.tolist()),
+                'Test indices': str(test_indices.tolist()),
+                'Original dataset size': len(d_train),
+                'Poisoned dataset size': len(poisoned_train),
+                'Number of samples tested on poisoned model': test_poison.shape[0],
+                'Clean Model Accuracy': train_baseline_acc,
+                'Clean Model Loss': train_baseline_loss,
+                'Clean Model Precision': train_baseline_prec,
+                'Clean Model Recall': train_baseline_rec,
+                'Clean Model F1': train_baseline_f1,
+                'Target Model Accuracy': target_acc,
+                'Target Model Loss': target_loss,
+                'Target Model Precision': target_prec,
+                'Target Model Recall': target_rec,
+                'Target Model F1': target_f1,
+                'Subpop Baseline Accuracy': base_acc,
+                'Subpop Baseline Loss': base_loss,
+                'Subpop Baseline Precision': base_prec,
+                'Subpop Baseline Recall': base_rec,
+                'Subpop Baseline F1': base_f1,
+                'Collateral Model Accuracy': collat_acc,
+                'Collateral Model Loss': collat_loss,
+                'Collateral Model Precision': collat_prec,
+                'Collateral Model Recall': collat_rec,
+                'Collateral Model F1': target_f1,
+            })
+            
+            utk_fm_data = pd.DataFrame(fm_results)
+            utk_fm_data.to_csv('utk_fm_data.csv', index=False)
+
+print("ClusterMatch")
 print("Extracting features...")
 
 feature_extractor = nn.Sequential(*list(vgg16.children())[:-1])
@@ -226,58 +380,14 @@ cluster_indices, cluster_counts = np.unique(cluster_labels, return_counts=True)
 print(f'There are {len(cluster_indices)} unique clusters in the auxiliary data')
 print(f'Cluster counts: {cluster_counts}')
 print(f'Cluster indices: {cluster_indices}')
-
-# def categorise_age(age):
-#     if 15 <= age < 30:
-#         return '[15, 30]'
-#     elif 30 <= age < 45:
-#         return '[30, 45]'
-#     elif 45 <= age < 60:
-#         return '[45, 60]'
-#     elif age >= 60:
-#         return '[60, inf]'
-#     else:
-#         return 'unknown'
-    
-# bucket_mapping = {
-#     '[15, 30]': 0,
-#     '[30, 45]': 1,
-#     '[45, 60]': 2,
-#     '[60, inf]': 3
-# }
-
-# d_aux['age bucket'] = d_aux['age'].apply(categorise_age)
-# d_train['age bucket'] = d_train['age'].apply(categorise_age)
-# d_test['age bucket'] = d_test['age'].apply(categorise_age)
-
-# d_aux['age bucket'] = d_aux['age bucket'].map(bucket_mapping)
-# d_train['age bucket'] = d_train['age bucket'].map(bucket_mapping)
-# d_test['age bucket'] = d_test['age bucket'].map(bucket_mapping)
-
-# feature_columns = ['age bucket', 'race']
-
-# aux_feature = d_aux[feature_columns].values
-# test_feature = d_test[feature_columns].values
-
-# af_tuples = [(x[0], int(x[1])) for x in aux_feature]
-# tuples, counts = np.unique(af_tuples, axis=0, return_counts=True)
-
-# print(f'There are {len(tuples)} unique tuples in the auxilliary dataset')
-# print(counts)
-# tuples = [(t[0], int(t[1])) for t in tuples]
-# print(tuples)
-
-poison_rates = [0.5, 1, 2]
-# features = [(subpop, count) for subpop, count in zip(tuples, counts)]
-
-# print(f"There are {len(features)} features in the auxilliary dataset")
+base_silhouette = silhouette_score(aux_pca, cluster_labels)
+print(f'Silhouette score: {base_silhouette}')
 
 cm_results = []
-fm_results = []
 
-valid_subpopulations = [(subpop, count) for subpop, count in zip(cluster_indices, cluster_counts)]
+cm_valid_subpopulations = [(subpop, count) for subpop, count in zip(cluster_indices, cluster_counts)]
 
-for i, (subpop, count) in enumerate(valid_subpopulations):
+for i, (subpop, count) in enumerate(cm_valid_subpopulations):
 
     print('\n')
     print(f"Subpopulation {i}")
@@ -294,57 +404,77 @@ for i, (subpop, count) in enumerate(valid_subpopulations):
     sub_count = aux_indices[0].shape[0]
     print(f"Subpopulation count: {sub_count}")
 
-    for j, pois_count in enumerate([int(sub_count * rate) for rate in poison_rates]):
+    if len(test_indices) > 0:
+        for j, pois_count in enumerate([int(sub_count * rate) for rate in poison_rates]):
 
-        print(f'Poison rate: {poison_rates[j]}')
-        print(f'Number of poisoned samples: {pois_count}')
+            print(f'Poison rate: {poison_rates[j]}')
+            print(f'Number of poisoned samples: {pois_count}')
 
-        pois_indices = np.random.choice(aux_poison.shape[0], pois_count, replace=True)
-        poison = aux_poison.iloc[pois_indices]
-        for i, r in poison.iterrows():
-            poison.loc[i, 'gender'] = 1 - r['gender']
-        
-        poisoned_train = pd.concat([d_train, poison])
-        pois_data = UTK_Dataset(poisoned_train, transform=transform)
-        pois_loader = DataLoader(pois_data, batch_size=32, shuffle=True)
-        
-        poisoned_vgg16 = models.vgg16(pretrained=True)
-        for param in list(poisoned_vgg16.parameters())[:-1]:
-            param.requires_grad = False
+            pois_indices = np.random.choice(aux_poison.shape[0], pois_count, replace=True)
+            poison = aux_poison.iloc[pois_indices]
+            for i, r in poison.iterrows():
+                poison.loc[i, 'gender'] = 1 - r['gender']
+            
+            poisoned_train = pd.concat([d_train, poison])
+            pois_data = UTK_Dataset(poisoned_train, transform=transform)
+            pois_loader = DataLoader(pois_data, batch_size=32, shuffle=True)
+            
+            poisoned_vgg16 = models.vgg16(pretrained=True)
+            for param in list(poisoned_vgg16.parameters())[:-1]:
+                param.requires_grad = False
 
-        num_features = poisoned_vgg16.classifier[-1].in_features
-        poisoned_vgg16.classifier[-1] = nn.Linear(num_features, 2)
+            num_features = poisoned_vgg16.classifier[-1].in_features
+            poisoned_vgg16.classifier[-1] = nn.Linear(num_features, 2)
 
-        criterion = nn.CrossEntropyLoss()
-        optimiser = optim.Adam(poisoned_vgg16.classifier[-1].parameters(), lr=0.0001, weight_decay=0.01)
+            criterion = nn.CrossEntropyLoss()
+            optimiser = optim.Adam(poisoned_vgg16.classifier[-1].parameters(), lr=0.0001, weight_decay=0.01)
 
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        poisoned_vgg16.to(device)
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            poisoned_vgg16.to(device)
 
-        trained_poisoned_vgg16 = train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
-        _, target_acc = evaluate_model(trained_poisoned_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
-        _, clean_nn_clean_subpop_acc = evaluate_model(train_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
-        _, collat_acc = evaluate_model(trained_poisoned_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
+            trained_poisoned_vgg16 = train_model(poisoned_vgg16, pois_loader, criterion, optimiser, device, num_epochs=num_epochs)
+            target_loss, target_acc, target_prec, target_rec, target_f1 = evaluate_model(trained_poisoned_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+            base_loss, base_acc, base_prec, base_rec, base_f1 = evaluate_model(train_vgg16, subpop_test_loader, criterion, device, desc="Test Set Evaluation")
+            collat_loss, collat_acc, collat_prec, collat_rec, collat_f1 = evaluate_model(trained_poisoned_vgg16, utk_test_loader, criterion, device, desc="Test Set Evaluation")
 
-        print(f"Baseline model accuracy: {baseline_model_accuracy}")
-        print(f"Poisoned model, clean subpopulation accuracy (target): {target_acc}")
-        print(f"Clean model, clean subpopulation accuracy: {clean_nn_clean_subpop_acc}")
-        print(f"Number of test samples: {test_poison.shape[0]}")
-        print(f"Poisoned model, clean model accuracy (collateral): {collat_acc}")
+            print(f"Baseline model accuracy: {train_baseline_acc}")
+            print(f"Poisoned model, clean subpopulation accuracy (target): {target_acc}")
+            print(f"Clean model, clean subpopulation accuracy: {base_acc}")
+            print(f"Number of test samples: {test_poison.shape[0]}")
+            print(f"Poisoned model, clean model accuracy (collateral): {collat_acc}")
 
-        cm_results.append({
-                'Subpopulation': i,
-                'Subpopulation size': sub_count,
+            cm_results.append({
+                'Cluster index': i,
+                'Cluster count': count,
                 'Poison rate': poison_rates[j],
                 'Number of poisoned samples': pois_count,
+                'Aux indices': str(aux_indices.tolist()),
+                'Test indices': str(test_indices.tolist()),
                 'Original dataset size': len(d_train),
                 'Poisoned dataset size': len(poisoned_train),
-                'Clean Model Accuracy': baseline_model_accuracy,
-                'Poisoned Model, Clean Subpopulation accuracy (target)': target_acc,
-                'Clean Model, Clean Subpopulation accuracy (subpop baseline)': clean_nn_clean_subpop_acc,
                 'Number of samples tested on poisoned model': test_poison.shape[0],
-                'Poisoned Model, Clean Test Data accuracy (collateral)': collat_acc
+                'Base silhouette': base_silhouette,
+                'Clean Model Accuracy': train_baseline_acc,
+                'Clean Model Loss': train_baseline_loss,
+                'Clean Model Precision': train_baseline_prec,
+                'Clean Model Recall': train_baseline_rec,
+                'Clean Model F1': train_baseline_f1,
+                'Target Model Accuracy': target_acc,
+                'Target Model Loss': target_loss,
+                'Target Model Precision': target_prec,
+                'Target Model Recall': target_rec,
+                'Target Model F1': target_f1,
+                'Subpop Baseline Accuracy': base_acc,
+                'Subpop Baseline Loss': base_loss,
+                'Subpop Baseline Precision': base_prec,
+                'Subpop Baseline Recall': base_rec,
+                'Subpop Baseline F1': base_f1,
+                'Collateral Model Accuracy': collat_acc,
+                'Collateral Model Loss': collat_loss,
+                'Collateral Model Precision': collat_prec,
+                'Collateral Model Recall': collat_rec,
+                'Collateral Model F1': target_f1,
             })
-        
-        utk_fm_data = pd.DataFrame(cm_results)
-        utk_fm_data.to_csv('utk_cm_data.csv', index=False)
+            
+            utk_fm_data = pd.DataFrame(cm_results)
+            utk_fm_data.to_csv('utk_cm_data.csv', index=False)
