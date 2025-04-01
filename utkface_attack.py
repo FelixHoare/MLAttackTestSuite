@@ -14,6 +14,8 @@ from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
 from sklearn.metrics import precision_score, recall_score, silhouette_score
 
+os.environ['TORCH_HOME'] = '/exports/eddie/scratch/s2050013/.torch'
+
 random.seed(0)
 
 def parse_utkface_data(path):
