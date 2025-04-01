@@ -12,7 +12,7 @@ from PIL import Image
 from tqdm import tqdm
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-from sklearn.metrics import precision_score, recall_score, silhouette_score
+from sklearn.metrics import precision_score, recall_score, silhouette_score, f1_score
 
 os.environ['TORCH_HOME'] = '/exports/eddie/scratch/s2050013/.torch'
 
@@ -144,37 +144,35 @@ def train_model(model, dataloader, criterion, optimiser, device, num_epochs=12, 
 train_vgg16 = train_model(vgg16, utk_train_loader, criterion, optimiser, device, num_epochs=num_epochs)
 
 def evaluate_model(model, dataloader, criterion, device, desc="Evaluation"):
-    model.eval()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
-    
+    model.eval()  # Set model to evaluation mode
+    model.to(device)  # Ensure model is on the correct device
+
     total_loss = 0
     correct = 0
     total = 0
     all_labels = []
     all_predictions = []
-    criterion = nn.CrossEntropyLoss()
-    
+
     with torch.no_grad():
         for images, labels in dataloader:
             images, labels = images.to(device), labels.to(device)
-            outputs = model(images, mode="classify")
+            outputs = model(images)  # Removed incorrect 'mode="classify"'
             loss = criterion(outputs, labels)
             total_loss += loss.item()
-            
-            _, predicted = outputs.max(1)
+
+            _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
-            
+
             all_labels.extend(labels.cpu().numpy())
             all_predictions.extend(predicted.cpu().numpy())
-    
+
     accuracy = 100 * correct / total
     avg_loss = total_loss / len(dataloader)
     precision = precision_score(all_labels, all_predictions, average='macro')
     recall = recall_score(all_labels, all_predictions, average='macro')
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
-    
+    f1 = f1_score(all_labels, all_predictions, average='macro')  # Fixed F1-score calculation
+
     return avg_loss, accuracy, precision, recall, f1
 
 utk_test = UTK_Dataset(d_test, transform=transform)
