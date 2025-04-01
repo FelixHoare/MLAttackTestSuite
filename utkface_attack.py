@@ -236,16 +236,16 @@ for i, (subpop, count) in enumerate(features):
     print('\n')
     print(f"Subpopulation {i}")
 
-    aux_indices = np.where(np.linalg.norm(aux_feature - subpop, axis=1)==0)
+    aux_indices = np.where(np.linalg.norm(aux_feature - subpop, axis=1)==0)[0]
     aux_poison = d_aux.iloc[aux_indices]
 
-    test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)
+    test_indices = np.where(np.linalg.norm(test_feature - subpop, axis=1)==0)[0]
     test_poison = d_test.iloc[test_indices]
 
     subpop_test_data = UTK_Dataset(test_poison, transform=transform)
     subpop_test_loader = DataLoader(subpop_test_data, batch_size=32, shuffle=True)
 
-    sub_count = aux_indices[0].shape[0]
+    sub_count = aux_indices.shape[0]
     print(f"Subpopulation count: {sub_count}")
 
     if len(test_indices) > 0:
@@ -392,16 +392,16 @@ for i, (subpop, count) in enumerate(cm_valid_subpopulations):
     print('\n')
     print(f"Subpopulation {i}")
 
-    aux_indices = np.where(cluster_labels==subpop)
+    aux_indices = np.where(cluster_labels==subpop)[0]
     aux_poison = d_aux.iloc[aux_indices]
 
-    test_indices = np.where(test_km==subpop)
+    test_indices = np.where(test_km==subpop)[0]
     test_poison = d_test.iloc[test_indices]
 
     subpop_test_data = UTK_Dataset(test_poison, transform=transform)
     subpop_test_loader = DataLoader(subpop_test_data, batch_size=32, shuffle=True)
 
-    sub_count = aux_indices[0].shape[0]
+    sub_count = aux_indices.shape[0]
     print(f"Subpopulation count: {sub_count}")
 
     if len(test_indices) > 0:
